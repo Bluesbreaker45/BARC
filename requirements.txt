@@ -1,3 +1,10 @@
-git+https://github.com/xu3kev/arc-py.git
+# git+https://github.com/xu3kev/arc-py.git
+numpy
+matplotlib
+appdirs
+
 orjsonl
 func-timeout
+
+scipy
+tqdm
