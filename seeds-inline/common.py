@@ -47,13 +47,6 @@ def flood_fill(grid, x, y, color, connectivity=4):
 
     assert connectivity in [4, 8], "flood_fill: Connectivity must be 4 or 8."
 
-    _flood_fill(grid, x, y, color, old_color, connectivity)
-
-
-def _flood_fill(grid, x, y, color, old_color, connectivity):
-    """
-    internal function not used by LLM
-    """
     stack = [(x, y)]
     while stack:
         current_x, current_y = stack.pop()
@@ -241,7 +234,14 @@ def blit_object(grid, obj, background=Color.BLACK):
     Example usage:
     blit_object(output_grid, an_object, background=background_color)
     """
-    return blit(grid, obj, x=0, y=0, background=background)
+    for i in range(obj.shape[0]):
+        for j in range(obj.shape[1]):
+            if background is None or obj[i, j] != background:
+                # check that it is inbounds
+                if 0 <= i < grid.shape[0] and 0 <= j < grid.shape[1]:
+                    grid[i, j] = obj[i, j]
+
+    return grid
 
 def blit_sprite(grid, sprite, x, y, background=Color.BLACK):
     """
@@ -250,7 +250,15 @@ def blit_sprite(grid, sprite, x, y, background=Color.BLACK):
     Example usage:
     blit_sprite(output_grid, the_sprite, x=x, y=y, background=background_color)
     """
-    return blit(grid, sprite, x=x, y=y, background=background)
+    x, y = int(x), int(y)
+
+    for i in range(sprite.shape[0]):
+        for j in range(sprite.shape[1]):
+            if background is None or sprite[i, j] != background:
+                if 0 <= x + i < grid.shape[0] and 0 <= y + j < grid.shape[1]:
+                    grid[x + i, y + j] = sprite[i, j]
+
+    return grid
 
 
 def bounding_box(grid, background=Color.BLACK):
@@ -289,7 +297,19 @@ def bounding_box_mask(grid, background=Color.BLACK):
     # teal_bounding_box_mask[x, y] is true if and only if (x, y) is in the bounding box of the teal object
     """
     mask = np.zeros_like(grid, dtype=bool)
-    x, y, w, h = bounding_box(grid, background=background)
+    n, m = grid.shape
+    x_min, x_max = n, -1
+    y_min, y_max = m, -1
+
+    for x in range(n):
+        for y in range(m):
+            if grid[x, y] != background:
+                x_min = min(x_min, x)
+                x_max = max(x_max, x)
+                y_min = min(y_min, y)
+                y_max = max(y_max, y)
+
+    x, y, w, h = x_min, y_min, x_max - x_min + 1, y_max - y_min + 1
     mask[x : x + w, y : y + h] = True
 
     return mask
@@ -307,7 +327,19 @@ def object_position(obj, background=Color.BLACK, anchor="upper left"):
 
     anchor = anchor.lower().replace(" ", "").replace("top", "upper").replace("bottom", "lower") # robustness to mistakes by llm
 
-    x, y, w, h = bounding_box(obj, background=background)
+    n, m = obj.shape
+    x_min, x_max = n, -1
+    y_min, y_max = m, -1
+
+    for x in range(n):
+        for y in range(m):
+            if obj[x, y] != background:
+                x_min = min(x_min, x)
+                x_max = max(x_max, x)
+                y_min = min(y_min, y)
+                y_max = max(y_max, y)
+
+    x, y, w, h = x_min, y_min, x_max - x_min + 1, y_max - y_min + 1
 
     if anchor == "upperleft":
         answer_x, answer_y = x, y
@@ -355,7 +387,19 @@ def crop(grid, background=Color.BLACK):
     # Extract a sprite from an object
     sprite = crop(an_object, background=background_color)
     """
-    x, y, w, h = bounding_box(grid, background)
+    n, m = grid.shape
+    x_min, x_max = n, -1
+    y_min, y_max = m, -1
+
+    for x in range(n):
+        for y in range(m):
+            if grid[x, y] != background:
+                x_min = min(x_min, x)
+                x_max = max(x_max, x)
+                y_min = min(y_min, y)
+                y_max = max(y_max, y)
+
+    x, y, w, h = x_min, y_min, x_max - x_min + 1, y_max - y_min + 1
     return grid[x : x + w, y : y + h]
 
 def translate(obj, x, y, background=Color.BLACK):
@@ -526,8 +570,31 @@ def check_between_objects(obj1, obj2, x, y, padding = 0, background=Color.BLACK)
     objects = sorted(objects, key=lambda x: object_position(x)[0])
 
     # There are two objects in the input
-    x1, y1, w1, h1 = bounding_box(objects[0], background=background)
-    x2, y2, w2, h2 = bounding_box(objects[1], background=background)
+    n1, m1 = objects[0].shape
+    x1, x1_max = n1, -1
+    y1, y1_max = m1, -1
+    for px in range(n1):
+        for py in range(m1):
+            if objects[0][px, py] != background:
+                x1 = min(x1, px)
+                x1_max = max(x1_max, px)
+                y1 = min(y1, py)
+                y1_max = max(y1_max, py)
+    w1 = x1_max - x1 + 1
+    h1 = y1_max - y1 + 1
+
+    n2, m2 = objects[1].shape
+    x2, x2_max = n2, -1
+    y2, y2_max = m2, -1
+    for px in range(n2):
+        for py in range(m2):
+            if objects[1][px, py] != background:
+                x2 = min(x2, px)
+                x2_max = max(x2_max, px)
+                y2 = min(y2, py)
+                y2_max = max(y2_max, py)
+    w2 = x2_max - x2 + 1
+    h2 = y2_max - y2 + 1
 
     # If the left one is higher than the right one and they can be connected horizontally
     if x1 + w1 <= x and x < x2 and y - padding >= max(y1, y2) and y + padding < min(y1 + h1, y2 + h2):
@@ -541,8 +608,31 @@ def check_between_objects(obj1, obj2, x, y, padding = 0, background=Color.BLACK)
     objects = sorted(objects, key=lambda x: object_position(x)[1])
 
     # There are two objects in the input
-    x1, y1, w1, h1 = bounding_box(objects[0], background=background)
-    x2, y2, w2, h2 = bounding_box(objects[1], background=background)
+    n1, m1 = objects[0].shape
+    x1, x1_max = n1, -1
+    y1, y1_max = m1, -1
+    for px in range(n1):
+        for py in range(m1):
+            if objects[0][px, py] != background:
+                x1 = min(x1, px)
+                x1_max = max(x1_max, px)
+                y1 = min(y1, py)
+                y1_max = max(y1_max, py)
+    w1 = x1_max - x1 + 1
+    h1 = y1_max - y1 + 1
+
+    n2, m2 = objects[1].shape
+    x2, x2_max = n2, -1
+    y2, y2_max = m2, -1
+    for px in range(n2):
+        for py in range(m2):
+            if objects[1][px, py] != background:
+                x2 = min(x2, px)
+                x2_max = max(x2_max, px)
+                y2 = min(y2, py)
+                y2_max = max(y2_max, py)
+    w2 = x2_max - x2 + 1
+    h2 = y2_max - y2 + 1
 
     # If the top one is to the left of the bottom one and they can be connected vertically
     if y1 + h1 <= y and y < y2 and x - padding >= max(x1, x2) and x + padding < min(x1 + w1, x2 + w2):
@@ -628,13 +718,79 @@ def random_free_location_for_sprite(
 
     return random.choice(pruned_locations)
 
-def random_free_location_for_object(*args, **kwargs):
+def random_free_location_for_object(
+    grid,
+    sprite,
+    background=Color.BLACK,
+    border_size=0,
+    padding=0,
+    padding_connectivity=8,
+):
     """
-    internal function not used by LLM
+    Find a random free location for the sprite in the grid
+    Returns a tuple (x, y) of the top-left corner of the sprite in the grid, which can be passed to `blit_sprite`
 
-    exists for backward compatibility
+    border_size: minimum distance from the edge of the grid
+    background: color treated as transparent
+    padding: if non-zero, the sprite will be padded with a non-background color before checking for collision
+    padding_connectivity: 4 or 8, for 4-way or 8-way connectivity when padding the sprite
+
+    Example usage:
+    x, y = random_free_location_for_sprite(grid, sprite, padding=1, padding_connectivity=8, border_size=1, background=Color.BLACK) # find the location, using generous padding
+    assert not collision(object1=grid, object2=sprite, x2=x, y2=y)
+    blit_sprite(grid, sprite, x, y)
+
+    If no free location can be found, raises a ValueError.
     """
-    return random_free_location_for_sprite(*args, **kwargs)
+    n, m = grid.shape
+
+    sprite_mask = 1 * (sprite != background)
+
+    # if padding is non-zero, we emulate padding by dilating everything within the grid
+    if padding > 0:
+        from scipy import ndimage
+
+        if padding_connectivity == 4:
+            structuring_element = np.array([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
+        elif padding_connectivity == 8:
+            structuring_element = np.array([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+        else:
+            raise ValueError("padding_connectivity must be 4 or 8.")
+
+        # use binary dilation to pad the sprite with a non-background color
+        grid_mask = ndimage.binary_dilation(
+            grid != background, iterations=padding, structure=structuring_element
+        ).astype(int)
+    else:
+        grid_mask = 1 * (grid != background)
+
+    possible_locations = [
+        (x, y)
+        for x in range(border_size, n + 1 - border_size - sprite.shape[0])
+        for y in range(border_size, m + 1 - border_size - sprite.shape[1])
+    ]
+
+    non_background_grid = np.sum(grid_mask)
+    non_background_sprite = np.sum(sprite_mask)
+    target_non_background = non_background_grid + non_background_sprite
+
+    # Scale background pixels to 0 so np.maximum can be used later
+    scaled_grid = grid.copy()
+    scaled_grid[scaled_grid == background] = Color.BLACK
+
+    # prune possible locations by making sure there is no overlap with non-background pixels if we were to put the sprite there
+    pruned_locations = []
+    for x, y in possible_locations:
+        # try blitting the sprite and see if the resulting non-background pixels is the expected value
+        new_grid_mask = grid_mask.copy()
+        blit(new_grid_mask, sprite_mask, x, y, background=0)
+        if np.sum(new_grid_mask) == target_non_background:
+            pruned_locations.append((x, y))
+
+    if len(pruned_locations) == 0:
+        raise ValueError("No free location for sprite found.")
+
+    return random.choice(pruned_locations)
 
 def object_interior(grid, background=Color.BLACK):
     """
@@ -654,11 +810,142 @@ def object_interior(grid, background=Color.BLACK):
     n, m = grid.shape
     for i in range(n):
         if grid[i, 0] == background:
-            flood_fill(mask, i, 0, 42)
-        if grid[i, m-1] == background: flood_fill(mask, i, m-1, 42)
+            x, y, color, connectivity = i, 0, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+        if grid[i, m-1] == background:
+            x, y, color, connectivity = i, m-1, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
     for j in range(m):
-        if grid[0, j] == background: flood_fill(mask, 0, j, 42)
-        if grid[n-1, j] == background: flood_fill(mask, n-1, j, 42)
+        if grid[0, j] == background:
+            x, y, color, connectivity = 0, j, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+        if grid[n-1, j] == background:
+            x, y, color, connectivity = n-1, j, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
 
     return mask != 42
 
@@ -674,8 +961,162 @@ def object_boundary(grid, background=Color.BLACK):
     """
 
     # similar idea: first get the exterior, but then we search for all the pixels that are part of the object and either adjacent to 42, or are part of the boundary
+    """
+    Computes the interior of the object (including edges)
 
-    exterior = ~object_interior(grid, background)
+    returns a new grid of `bool` where True indicates that the pixel is part of the object's interior.
+
+    Example usage:
+    interior = object_interior(obj, background=Color.BLACK)
+    for x, y in np.argwhere(interior):
+        # x,y is either inside the object or at least on its edge
+    """
+
+
+    # similar idea: first get the exterior, but then we search for all the pixels that are part of the object and either adjacent to 42, or are part of the boundary
+    mask = 1*(grid != background)
+
+    # March around the border and flood fill (with 42) wherever we find zeros
+    n, m = grid.shape
+    for i in range(n):
+        if grid[i, 0] == background:
+            x, y, color, boundary_connectivity = i, 0, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+        if grid[i, m-1] == background:
+            x, y, color, boundary_connectivity = i, m-1, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+    for j in range(m):
+        if grid[0, j] == background:
+            x, y, color, boundary_connectivity = 0, j, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+        if grid[n-1, j] == background:
+            x, y, color, boundary_connectivity = n-1, j, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+    exterior = mask == 42
 
     # Now we find all the pixels that are part of the object and adjacent to the exterior, or which are part of the object and on the boundary of the canvas
     canvas_boundary = np.zeros_like(grid, dtype=bool)
@@ -702,7 +1143,162 @@ def object_neighbors(grid, background=Color.BLACK, connectivity=4):
     assert np.all(obj[neighbors] == Color.BLACK)
     """
 
-    boundary = object_boundary(grid, background)
+    # similar idea: first get the exterior, but then we search for all the pixels that are part of the object and either adjacent to 42, or are part of the boundary
+    mask = 1*(grid != background)
+
+    # March around the border and flood fill (with 42) wherever we find zeros
+    n, m = grid.shape
+    for i in range(n):
+        if grid[i, 0] == background:
+            x, y, color, boundary_connectivity = i, 0, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+        if grid[i, m-1] == background:
+            x, y, color, boundary_connectivity = i, m-1, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+    for j in range(m):
+        if grid[0, j] == background:
+            x, y, color, boundary_connectivity = 0, j, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+        if grid[n-1, j] == background:
+            x, y, color, boundary_connectivity = n-1, j, 42, 4
+            old_color = mask[x, y]
+
+            stack = [(x, y)]
+            while stack:
+                current_x, current_y = stack.pop()
+                if (
+                    mask[current_x, current_y] != old_color
+                    or mask[current_x, current_y] == color
+                ):
+                    continue
+
+                mask[current_x, current_y] = color
+
+                # flood fill in all directions
+                if current_x > 0:
+                    stack.append((current_x - 1, current_y))
+                if current_x < mask.shape[0] - 1:
+                    stack.append((current_x + 1, current_y))
+                if current_y > 0:
+                    stack.append((current_x, current_y - 1))
+                if current_y < mask.shape[1] - 1:
+                    stack.append((current_x, current_y + 1))
+
+                if boundary_connectivity == 8:
+                    if current_x > 0 and current_y > 0:
+                        stack.append((current_x - 1, current_y - 1))
+                    if current_x > 0 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x - 1, current_y + 1))
+                    if current_x < mask.shape[0] - 1 and current_y > 0:
+                        stack.append((current_x + 1, current_y - 1))
+                    if current_x < mask.shape[0] - 1 and current_y < mask.shape[1] - 1:
+                        stack.append((current_x + 1, current_y + 1))
+    exterior = mask == 42
+
+    # Now we find all the pixels that are part of the object and adjacent to the exterior, or which are part of the object and on the boundary of the canvas
+    canvas_boundary = np.zeros_like(grid, dtype=bool)
+    canvas_boundary[0, :] = True
+    canvas_boundary[-1, :] = True
+    canvas_boundary[:, 0] = True
+    canvas_boundary[:, -1] = True
+
+    from scipy import ndimage
+    adjacent_to_exterior = ndimage.binary_dilation(exterior, iterations=1)
+
+    boundary = (grid != background) & (adjacent_to_exterior | canvas_boundary)
     # Find the neighbors of the boundary
     if connectivity == 4:
         structuring_element = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
