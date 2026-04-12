@@ -54,36 +54,32 @@ def _flood_fill(grid, x, y, color, old_color, connectivity):
     """
     internal function not used by LLM
     """
-    stack = [(x, y)]
-    while stack:
-        current_x, current_y = stack.pop()
-        if (
-            grid[current_x, current_y] != old_color
-            or grid[current_x, current_y] == color
-        ):
-            continue
+    if grid[x, y] != old_color or grid[x, y] == color:
+        return
 
-        grid[current_x, current_y] = color
+    grid[x, y] = color
 
-        # flood fill in all directions
-        if current_x > 0:
-            stack.append((current_x - 1, current_y))
-        if current_x < grid.shape[0] - 1:
-            stack.append((current_x + 1, current_y))
-        if current_y > 0:
-            stack.append((current_x, current_y - 1))
-        if current_y < grid.shape[1] - 1:
-            stack.append((current_x, current_y + 1))
+    # flood fill in all directions
+    if x > 0:
+        _flood_fill(grid, x - 1, y, color, old_color, connectivity)
+    if x < grid.shape[0] - 1:
+        _flood_fill(grid, x + 1, y, color, old_color, connectivity)
+    if y > 0:
+        _flood_fill(grid, x, y - 1, color, old_color, connectivity)
+    if y < grid.shape[1] - 1:
+        _flood_fill(grid, x, y + 1, color, old_color, connectivity)
 
-        if connectivity == 8:
-            if current_x > 0 and current_y > 0:
-                stack.append((current_x - 1, current_y - 1))
-            if current_x > 0 and current_y < grid.shape[1] - 1:
-                stack.append((current_x - 1, current_y + 1))
-            if current_x < grid.shape[0] - 1 and current_y > 0:
-                stack.append((current_x + 1, current_y - 1))
-            if current_x < grid.shape[0] - 1 and current_y < grid.shape[1] - 1:
-                stack.append((current_x + 1, current_y + 1))
+    if connectivity == 4:
+        return
+
+    if x > 0 and y > 0:
+        _flood_fill(grid, x - 1, y - 1, color, old_color, connectivity)
+    if x > 0 and y < grid.shape[1] - 1:
+        _flood_fill(grid, x - 1, y + 1, color, old_color, connectivity)
+    if x < grid.shape[0] - 1 and y > 0:
+        _flood_fill(grid, x + 1, y - 1, color, old_color, connectivity)
+    if x < grid.shape[0] - 1 and y < grid.shape[1] - 1:
+        _flood_fill(grid, x + 1, y + 1, color, old_color, connectivity)
 
 
 def draw_line(grid, x, y, end_x=None, end_y=None, length=None, direction=None, color=None, stop_at_color=[]):
@@ -491,10 +487,8 @@ def randomly_spaced_indices(max_len, n_indices, border_size=1, padding=1):
     for x in x_indices:
         grid[x, :] = divider_color
     """
-    offset = 0
-    if border_size > 0:
-        max_len = max_len - border_size - 2
-        offset = border_size
+    if border_size>0:
+        return randomly_spaced_indices(max_len-border_size-2, n_indices, border_size=0, padding=padding) + border_size
     
     indices = [0 for _ in range(max_len)]
     while sum(indices) < n_indices:
@@ -509,7 +503,7 @@ def randomly_spaced_indices(max_len, n_indices, border_size=1, padding=1):
             assert 0
         indices[random.choice(possible_indices)] = 1
 
-    return np.argwhere(indices).flatten() + offset
+    return np.argwhere(indices).flatten()
 
 def check_between_objects(obj1, obj2, x, y, padding = 0, background=Color.BLACK):
     """
