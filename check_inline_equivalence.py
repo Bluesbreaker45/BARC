@@ -146,6 +146,32 @@ def run_worker(file_path, lib_dir, seed, call, input_grid=None, timeout=10):
         }
 
 
+def _load_examples(problem_json_path):
+    with open(problem_json_path) as f:
+        data = json.load(f)
+
+    raw_examples = data.get("examples")
+    if not isinstance(raw_examples, list):
+        raise ValueError("missing or invalid examples list")
+
+    examples = []
+    for idx, example in enumerate(raw_examples, 1):
+        if isinstance(example, dict):
+            input_grid = example.get("input")
+            output_grid = example.get("output")
+        elif isinstance(example, (list, tuple)) and len(example) == 2:
+            input_grid, output_grid = example
+        else:
+            raise ValueError(f"invalid example format at index {idx}")
+
+        if input_grid is None or output_grid is None:
+            raise ValueError(f"missing input/output at index {idx}")
+
+        examples.append((input_grid, output_grid))
+
+    return examples
+
+
 def compare_problem(
     problem_name,
     orig_file_dir,
@@ -156,8 +182,11 @@ def compare_problem(
     base_seed,
     timeout,
 ):
+    del num_trials, base_seed
+
     orig_file = orig_file_dir / problem_name
     inline_file = inline_file_dir / problem_name
+    orig_json = orig_file.with_suffix(".json")
 
     if not orig_file.exists() or not inline_file.exists():
         return {
@@ -165,55 +194,53 @@ def compare_problem(
             "detail": f"orig exists={orig_file.exists()} inline exists={inline_file.exists()}",
         }
 
+    if not orig_json.exists():
+        return {
+            "status": "missing",
+            "detail": f"examples file missing: {orig_json}",
+        }
+
+    try:
+        examples = _load_examples(orig_json)
+    except Exception as e:
+        return {"status": "error", "detail": f"failed to load examples: {type(e).__name__}: {e}"}
+
     mismatches = []
 
-    for trial in range(num_trials):
-        seed = base_seed + trial
-
-        # Step 1: generate_input() in both versions with the same seed.
-        orig_gen = run_worker(orig_file, orig_lib_dir, seed, "generate_input", timeout=timeout)
-        inline_gen = run_worker(inline_file, inline_lib_dir, seed, "generate_input", timeout=timeout)
-
-        if "error" in orig_gen:
-            mismatches.append(f"seed={seed} original generate_input error: {orig_gen['error']}")
-            continue
-        if "error" in inline_gen:
-            mismatches.append(f"seed={seed} inlined  generate_input error: {inline_gen['error']}")
-            continue
-
-        if orig_gen.get("grid") != inline_gen.get("grid"):
-            mismatches.append(
-                f"seed={seed} generate_input MISMATCH: "
-                f"orig shape={_shape(orig_gen.get('grid'))} "
-                f"inline shape={_shape(inline_gen.get('grid'))}"
-            )
-            continue
-
-        shared_input = orig_gen.get("grid")
-        if shared_input is None:
-            mismatches.append(f"seed={seed} generate_input returned None/non-grid")
-            continue
-
-        # Step 2: main(shared_input) in both versions with the same seed.
+    for pair_idx, (input_grid, expected_output_grid) in enumerate(examples, 1):
         orig_out = run_worker(
-            orig_file, orig_lib_dir, seed, "main", input_grid=shared_input, timeout=timeout
+            orig_file, orig_lib_dir, 0, "main", input_grid=input_grid, timeout=timeout
         )
         inline_out = run_worker(
-            inline_file, inline_lib_dir, seed, "main", input_grid=shared_input, timeout=timeout
+            inline_file, inline_lib_dir, 0, "main", input_grid=input_grid, timeout=timeout
         )
 
         if "error" in orig_out:
-            mismatches.append(f"seed={seed} original main error: {orig_out['error']}")
+            mismatches.append(f"pair={pair_idx} original main error: {orig_out['error']}")
             continue
         if "error" in inline_out:
-            mismatches.append(f"seed={seed} inlined  main error: {inline_out['error']}")
+            mismatches.append(f"pair={pair_idx} inlined  main error: {inline_out['error']}")
             continue
 
-        if orig_out.get("grid") != inline_out.get("grid"):
+        orig_grid = orig_out.get("grid")
+        inline_grid = inline_out.get("grid")
+
+        if orig_grid != expected_output_grid:
             mismatches.append(
-                f"seed={seed} main MISMATCH: "
-                f"orig shape={_shape(orig_out.get('grid'))} "
-                f"inline shape={_shape(inline_out.get('grid'))}"
+                f"pair={pair_idx} original main MISMATCH: "
+                f"got shape={_shape(orig_grid)} expected shape={_shape(expected_output_grid)}"
+            )
+
+        if inline_grid != expected_output_grid:
+            mismatches.append(
+                f"pair={pair_idx} inlined  main MISMATCH: "
+                f"got shape={_shape(inline_grid)} expected shape={_shape(expected_output_grid)}"
+            )
+
+        if orig_grid != inline_grid:
+            mismatches.append(
+                f"pair={pair_idx} original vs inlined MISMATCH: "
+                f"orig shape={_shape(orig_grid)} inline shape={_shape(inline_grid)}"
             )
 
     return {"status": "ok" if not mismatches else "mismatch", "mismatches": mismatches}
